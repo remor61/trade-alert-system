@@ -1,0 +1,6 @@
+# dados de mercado (TradingView) e saídas geradas não vão para o repositório
+data/
+results/
+__pycache__/
+*.pyc
+.venv/

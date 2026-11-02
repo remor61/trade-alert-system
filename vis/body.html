@@ -1,0 +1,39 @@
+<div class="wrap">
+  <header>
+    <h1>Cunhas no {{SYM}}</h1>
+    <p class="sub">Backtest das cunhas descendentes como gatilho de compra no rompimento, com stop no último fundo e alvo no último topo. Dados diários de {{RANGE}}. Arraste para mover, use a roda ou o pinch para zoom, clique duplo para ver tudo e clique numa linha da tabela para ir até o trade.</p>
+  </header>
+  <div class="layout">
+  <section class="side-a"><div class="stats" id="stats"></div></section>
+  <section class="main">
+  <div class="bar">
+    <div class="seg" role="group" aria-label="Timeframe"><button id="tfD" aria-pressed="true">Diário</button><button id="tfW" aria-pressed="false">Semanal</button></div>
+    <div class="seg" role="group" aria-label="Escala"><button id="scLin" aria-pressed="true">Linear</button><button id="scLog" aria-pressed="false">Log</button></div>
+    <div class="seg" role="group" aria-label="Zoom"><button id="zin" aria-label="Aproximar">+</button><button id="zout" aria-label="Afastar">−</button><button id="zall">Tudo</button></div>
+  </div>
+  <div class="bar">
+    <label class="chk"><input type="checkbox" id="lT1" checked><span class="sw" style="background:var(--up)"></span>Trades T1 (cunha no episódio)</label>
+    <label class="chk"><input type="checkbox" id="lT3"><span class="sw" style="background:var(--t3)"></span>Sinais T3 (sem Slow Stoch)</label>
+    <label class="chk"><input type="checkbox" id="lFall" checked><span class="sw" style="background:var(--fall)"></span>Cunhas descendentes dos trades</label>
+    <label class="chk"><input type="checkbox" id="lAll"><span class="sw" style="background:var(--fall);opacity:.5"></span>Todas as descendentes detectadas</label>
+    <label class="chk"><input type="checkbox" id="lRise" checked><span class="sw" style="background:var(--rise)"></span>Cunhas ascendentes (filtro T2)</label>
+    <label class="chk"><input type="checkbox" id="lEp" checked><span class="sw" style="background:var(--ep);height:10px"></span>Episódios Slow Stoch ≤20</label>
+  </div>
+  <div class="chartbox" id="box"><canvas id="cv"></canvas><div id="ohlc"></div><div id="tip" hidden></div></div>
+  <div class="legend">
+    <span><i style="background:var(--win)"></i>Zona até o alvo</span>
+    <span><i style="background:var(--loss)"></i>Zona até o stop</span>
+    <span>▲ entrada no fechamento do rompimento</span>
+    <span>● saída (verde alvo, vermelho stop, cinza tempo)</span>
+    <span>Linha grossa = cunha do semanal, fina = do diário</span>
+    <span>✕ = rompimento</span>
+  </div>
+  </section>
+  <section class="side">
+  <h2>Trades</h2>
+  <div class="bar"><div class="seg" role="group" aria-label="Conjunto"><button id="sT1" aria-pressed="true">T1 · dentro do episódio</button><button id="sT3" aria-pressed="false">T3 · sem Slow Stoch</button></div></div>
+  <div class="tbl"><table><thead><tr><th>Entrada</th><th>TF</th><th>MM50 ↑</th><th>Vol. ≥1,2×</th><th>Cunha asc.</th><th>Preço</th><th>Stop</th><th>Alvo</th><th>Saída</th><th>Data saída</th><th>Resultado</th><th>R</th></tr></thead><tbody id="tb"></tbody></table></div>
+  <p class="notes">T1 = primeira quebra de cunha descendente dentro de um episódio do Slow Stoch semanal (K ≤20). Quando a cunha com volume é outra, ela aparece como trade separado. T3 = toda quebra de cunha descendente, sem exigir o estocástico. "Cunha asc." marca trades que o filtro do teste 2 teria bloqueado (quebra de cunha ascendente nos últimos 20 dias ou 8 semanas). Uma cunha só vale se o topo de origem vier depois do último rompimento aceito (diário e semanal avaliados separadamente). R usa risco mínimo de 1% do preço. Preços ajustados por splits.</p>
+  </section>
+  </div>
+</div>
