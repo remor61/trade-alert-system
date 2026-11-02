@@ -47,7 +47,7 @@ python vis/build_page.py MSTR 2021-06-02     # abre results/cunhas_MSTR.html
 Metade dos meses de cada ano foi sorteada para **desenvolvimento** (seed 20261102, ver `src/split.py`). Todo ajuste de filtro, gatilho, stop ou alvo usa só esses meses (`MONTHS=D`, padrão). Os meses **reservados** (`MONTHS=R`) só são usados na validação final, uma vez, quando a configuração estiver fechada. Cada trade é classificado pelo mês da entrada. As decisões tomadas antes de 02/11/2026 (filtro MM50, order blocks, gatilhos atuais, cunhas) já viram todos os meses.
 
 ### Medida de resultado
-Banca de 10.000 USD, risco de ~100 USD por trade: quantidade = ⌊100 ÷ (entrada − stop)⌋, sem alavancagem (posição máxima de 10.000 USD), sem custos e sem juros compostos. Reportar acerto, retorno total e por trade em % da banca, ganho e perda médios, risco/retorno (ganho médio ÷ perda média), profit factor e drawdown máximo. Não usar R.
+Banca de 10.000 USD, risco de ~100 USD por trade: quantidade = ⌊100 ÷ (entrada − stop)⌋ ou ⌈100 ÷ (entrada − stop)⌉, a que deixar o risco mais perto de 100 USD dentro de 85–115 USD (se nenhuma cabe, a de baixo; mínimo 1), sem alavancagem (posição máxima de 10.000 USD), sem custos e sem juros compostos. Reportar acerto, retorno total e por trade em % da banca, ganho e perda médios, risco/retorno (ganho médio ÷ perda média), profit factor e drawdown máximo. Não usar R.
 
 ### Setup
 - **Toque**: %K lento semanal cruza para ≤ 20. O episódio dura enquanto ficar ≤ 20.
