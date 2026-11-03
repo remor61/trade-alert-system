@@ -53,11 +53,12 @@ Banca de 10.000 USD, risco de ~100 USD por trade: quantidade = ⌊100 ÷ (entrad
 - **Toque**: %K lento semanal cruza para ≤ 20. O episódio dura enquanto ficar ≤ 20.
 - **Filtro de tendência**: MM50 semanal subindo (MM50 > MM50 de 4 semanas atrás).
 - **Gatilhos**: 123, inside bar (stop na mínima do candle-mãe), trap (sem filtro do estocástico), rompimento simples; no semanal e no diário (diário só com o semanal ≤ 20).
+- **Cunha descendente no diário**: gatilho à parte, sem toque do Slow Stoch. O único filtro é a MM50 semanal subindo, medida na última semana fechada antes do rompimento. Entrada no fechamento do primeiro candle diário acima da linha superior da cunha (regra da cunha abaixo). Mesmo stop e alvos dos outros gatilhos. No código é o `ns` diário (`bt_wedge.py`, T3).
 - **Stop**: último fundo semanal abaixo da entrada (pivô de 2 candles de cada lado; mínima da correção ou pivô não violado mais recente).
 - **Alvos**: último topo, 2× o risco, Fibonacci 100% e 161,8%, saída por tempo (13 e 26 semanas).
 - **Order blocks**: só zonas de interesse; não melhoraram o resultado como filtro.
 
-### Cunhas (em estudo, ainda fora da skill)
+### Cunhas (gatilho no diário; ainda fora da skill)
 - Linhas por 2 pivôs de alta e 2 de baixa, ≥ 2 toques em cada linha, convergentes. Formato: inclinação inferior ÷ superior ≥ 0,0485 (limite definido pela cunha da TSLA dez/2024–abr/2025).
 - Entrada no fechamento do primeiro candle acima da linha superior, sem olhar o futuro.
 - O rompimento consome a estrutura: uma cunha nova só vale se o topo de origem vier depois do último rompimento aceito, separadamente no diário e no semanal.

@@ -1,8 +1,11 @@
+"""Relatório em banca. uso: python src/bank.py [TICKER ...]  (sem tickers = todos os ativos de data/)"""
 from config import DATA_ROOT, RESULTS, EXCLUDE
-import pandas as pd, numpy as np, glob
+import pandas as pd, numpy as np, glob, sys
 BANK, RISK, RLO, RHI = 10_000, 100, 85, 115
-B=pd.concat([pd.read_csv(f) for f in glob.glob(DATA_ROOT+'/*/trades.csv') if f.split('/')[-2] not in EXCLUDE])
-Wd=pd.concat([pd.read_csv(f) for f in glob.glob(DATA_ROOT+'/*/wedge_trades.csv')])
+SYMS = set(sys.argv[1:])
+use = lambda f: f.split('/')[-2] not in EXCLUDE and (not SYMS or f.split('/')[-2] in SYMS)
+B=pd.concat([pd.read_csv(f) for f in glob.glob(DATA_ROOT+'/*/trades.csv') if use(f)])
+Wd=pd.concat([pd.read_csv(f) for f in glob.glob(DATA_ROOT+'/*/wedge_trades.csv') if use(f)])
 from config import months_filter, MONTHS
 A=pd.concat([B,Wd]); A=A[A.reason!='open'].copy()
 A=months_filter(A).copy(); print('meses:',MONTHS,'| trades:',len(A))
@@ -22,7 +25,7 @@ def st(g):
       'payoff':(w.mean()/-l.mean()) if len(w) and len(l) else np.nan,'profit factor':(w.sum()/-l.sum()) if len(l) else np.nan,
       'max DD %':100*dd/BANK,'ativos':g.sym.nunique(),'risco médio $':g['risk$'].mean()})
 pd.set_option('display.width',250); pd.set_option('display.float_format','{:.2f}'.format)
-lab={'123':'123','brk':'Rompimento','inside':'Inside bar','trap':'Trap','wedge':'Cunha','wedge_vol':'Cunha + volume','ns':'Cunha sem Stoch (T3)','ns_vol':'T3 + volume','close':'Fech. do toque','open':'Abert. seguinte'}
+lab={'123':'123','brk':'Rompimento','inside':'Inside bar','trap':'Trap','wedge':'Cunha','wedge_vol':'Cunha + volume','ns':'Cunha (só MM50)','ns_vol':'T3 + volume','close':'Fech. do toque','open':'Abert. seguinte'}
 out=[]
 for tg in ['topo','2R','fib161','tempo26']:
     g=A[(A.stop=='pivot')&(A.tgt==tg)&A.trend]
