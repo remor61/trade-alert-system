@@ -19,6 +19,8 @@ Backtest e monitoramento do setup de compra em sobrevenda do **Slow Stochastic 8
 | `src/pool_wedge.py` | Análise exploratória das cunhas (versão antiga, em R). |
 | `src/run_all.py` | Roda `bt_wedge.py` (que inclui `bt.py`) em todos os ativos em paralelo. |
 | `src/export_vis.py`, `vis/` | Página interativa com cunhas, sinais e trades de um ativo. |
+| `src/campanhas.py`, `src/sizing.py` | Estratégia **Campanhas** (independente do setup Slow Stoch): backtest por ativo de cada gatilho e de todos juntos, com as 5 saídas. `sizing.py` é o sizing comum às duas estratégias. |
+| `tradingview/campanhas.pine` | Indicador do TradingView com os 7 gatilhos da Campanhas (setups armados, compras executadas e, opcional, sinais de venda). |
 | `watchlist.txt` | Ativos da watchlist "US Stocks" do TradingView. |
 
 ## Como rodar
@@ -63,6 +65,25 @@ Banca de 10.000 USD, risco de ~100 USD por trade: quantidade = ⌊100 ÷ (entrad
 - Entrada no fechamento do primeiro candle acima da linha superior, sem olhar o futuro.
 - O rompimento consome a estrutura: uma cunha nova só vale se o topo de origem vier depois do último rompimento aceito, separadamente no diário e no semanal.
 - Volume no rompimento (≥ 1,2× a média de 20) não ajudou.
+
+## Estratégia Campanhas
+
+Estratégia própria, sem relação com o setup Slow Stoch. Só compras, tudo no diário. Mesma banca, sizing e regra de meses D/R acima.
+
+- **Filtro**: MM50 diária subindo (MM50 > MM50 de 4 pregões atrás), medida no último candle fechado antes da entrada. O preço não precisa estar acima da média.
+- **Entrada**: ordem stop 1 tick acima do preço de gatilho (tick = 0,01, ou 0,05% do preço em preços muito baixos), no candle seguinte ao sinal.
+- **Gatilhos**:
+  1. **123 de compra**: mínima do 2º candle abaixo das do 1º e do 3º; gatilho na máxima do 3º; stop na mínima do 2º.
+  2. **Inside bar**: candle dentro do anterior; gatilho na máxima do inside; stop na mínima do candle-mãe.
+  3. **Trap**: candle que perde o último fundo de 123 ainda não violado, até 50 candles atrás; gatilho na máxima dele, no candle seguinte (ou no segundo, se o primeiro for inside); stop na mínima do candle da armadilha.
+  4. **Barra vermelha ignorada**: único candle vermelho depois de pelo menos 3 brancos; gatilho na máxima dele, que precisa estar acima da MME8; stop na mínima.
+  5. **Sombra superior ignorada**: sombra superior ≥ 50% da amplitude do candle; gatilho na máxima, acima da MME8; stop na mínima.
+  6. **Trap na MM50**: mínima toca ou fura a MM50 e o candle fecha acima dela (sombra inferior), vindo de fechamento acima; gatilho na máxima; stop na mínima.
+  7. **Gap de compra**: abertura abaixo da mínima anterior; compra quando o preço volta à mínima anterior + 1 tick, em até 5 pregões; stop na mínima do candle que fechou o gap, conhecida até a entrada (candle de baixa: a abertura).
+- **Saídas** (cada teste roda com todas): topo anterior (último topo diário acima da entrada; sem topo, 2R), 2R, 3R, sinal de venda (qualquer gatilho espelhado formado depois da entrada) e Slow Stoch 14/3 com %K > 80 no fechamento. O stop vale sempre; saída por tempo após 260 pregões.
+- **Execução**: uma posição por vez por ativo; com posição aberta, novos sinais são ignorados. Banca independente por ativo.
+- **Gap e dado diário**: o stop do gap fica a ~0,7% da entrada (mediana) e o resultado depende da ordem dos preços dentro do dia. Na convenção do repositório (candle de alta: abertura → mínima → máxima → fechamento) o gap é o melhor gatilho; no limite pessimista (`CAMP_GAP=pior`: a mínima sempre veio depois da entrada) é o pior. Só dados intradiários resolvem. Por isso o teste "todos sem gap" existe à parte.
+- Rodar: `python src/campanhas.py [--desde AAAA-MM-DD] [TICKER ...]` grava `results/campanhas_*.csv`.
 
 ## Dados
 `data/` e `results/` ficam fora do git: os dados são do TradingView e podem ser refeitos com `import_tv.py`.

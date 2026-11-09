@@ -1,7 +1,7 @@
 """Relatório em banca. uso: python src/bank.py [TICKER ...]  (sem tickers = todos os ativos de data/)"""
 from config import DATA_ROOT, RESULTS, EXCLUDE
 import pandas as pd, numpy as np, glob, sys
-BANK, RISK, RLO, RHI = 10_000, 100, 85, 115
+from sizing import shares, BANK
 SYMS = set(sys.argv[1:])
 use = lambda f: f.split('/')[-2] not in EXCLUDE and (not SYMS or f.split('/')[-2] in SYMS)
 B=pd.concat([pd.read_csv(f) for f in glob.glob(DATA_ROOT+'/*/trades.csv') if use(f)])
@@ -10,10 +10,7 @@ from config import months_filter, MONTHS
 A=pd.concat([B,Wd]); A=A[A.reason!='open'].copy()
 A=months_filter(A).copy(); print('meses:',MONTHS,'| trades:',len(A))
 d=A.entry-A.stop_px
-# quantidade com risco mais perto de 100 USD dentro de 85–115 (arredonda para cima ou para baixo); se nenhuma cabe, a de baixo; sem alavancagem
-cap=np.maximum(np.floor(BANK/A.entry),1); lo_q=np.minimum(np.floor(RISK/d),cap); hi_q=np.minimum(np.ceil(RISK/d),cap)
-ok=lambda q:(q>=1)&(q*d>=RLO)&(q*d<=RHI)
-sh=np.where(ok(lo_q)&(~ok(hi_q)|((RISK-lo_q*d)<=(hi_q*d-RISK))),lo_q,np.where(ok(hi_q),hi_q,lo_q)); sh=np.maximum(sh,1)
+sh=shares(A.entry.values,A.stop_px.values)  # risco mais perto de 100 USD dentro de 85–115 (src/sizing.py)
 A['shares']=sh; A['risk$']=sh*d; A['pnl']=sh*(A.exit-A.entry); A['pos$']=sh*A.entry
 A['t_exit']=pd.to_datetime(A.edate)+pd.to_timedelta(A.weeks.fillna(0)*7,unit='D')
 def st(g):

@@ -1,0 +1,174 @@
+//@version=6
+// Estratégia "Campanhas" (src/campanhas.py): só compras, no diário. Filtro: MM50 subindo (MM50 > MM50 de 4 candles atrás)
+// no candle do sinal. Gatilhos: 123, inside bar, trap (fundo de até 50 candles), barra vermelha ignorada, sombra superior
+// ignorada, trap na MM50, gap de baixa fechado. Compra 1 tick acima do gatilho (tick = min(0,01; 0,05% do preço)).
+// Marcadores: rótulo cinza = setup armado (linha tracejada no preço de gatilho); ▲ verde = compra executada.
+// Opcional: setups de venda espelhados (saída "sinal" da estratégia).
+indicator("Campanhas", overlay = true, max_lines_count = 500, max_labels_count = 500, max_bars_back = 300)
+
+grpG = "Gatilhos de compra"
+on123  = input.bool(true, "123 de compra", group = grpG)
+onIn   = input.bool(true, "Inside bar", group = grpG)
+onTrap = input.bool(true, "Trap", group = grpG)
+onBvi  = input.bool(true, "Barra vermelha ignorada", group = grpG)
+onSsi  = input.bool(true, "Sombra superior ignorada", group = grpG)
+onTmm  = input.bool(true, "Trap na MM50", group = grpG)
+onGap  = input.bool(true, "Gap de compra", group = grpG)
+grpP = "Parâmetros"
+nWhite = input.int(3, "BVI: candles brancos antes do vermelho", minval = 1, group = grpP)
+shadow = input.float(0.5, "SSI: sombra mínima (fração do candle)", step = 0.05, group = grpP)
+trapLB = input.int(50, "Trap: fundo até N candles atrás", minval = 3, maxval = 200, group = grpP)
+gapWait = input.int(5, "Gap: pregões para fechar o gap", minval = 1, group = grpP)
+grpV = "Visual"
+showSetup = input.bool(true, "Mostrar setups armados", group = grpV)
+showSells = input.bool(false, "Mostrar sinais de venda (saída 'sinal')", group = grpV)
+showMA    = input.bool(true, "Mostrar MM50 e MME8", group = grpV)
+colBuy  = input.color(#1f8a5b, "Compra", group = grpV)
+colSell = input.color(#c8473b, "Venda", group = grpV)
+
+float sma50 = ta.sma(close, 50)
+float ema8  = ta.ema(close, 8)
+bool trendUp = sma50 > sma50[4]
+plot(showMA ? sma50 : na, "MM50", color = trendUp ? color.new(colBuy, 30) : color.new(color.gray, 30), linewidth = 2)
+plot(showMA ? ema8 : na, "MME8", color = color.new(color.orange, 40))
+
+tk(float p) => math.min(0.01, math.abs(p) * 0.0005)
+
+// Setups no candle atual, numa série que pode estar espelhada (side = -1: H = -low, L = -high ...).
+// Retorna um bool por gatilho e o stop do 123 e do inside; o preço de gatilho é H + tick.
+setups(float O, float H, float L, float C, float E, float M) =>
+    float s123 = na
+    float sIn = na
+    bool f123 = false
+    bool fIn = false
+    bool fTrap = false
+    bool fBvi = false
+    bool fSsi = false
+    bool fTmm = false
+    // 1. 123
+    if L[1] < L[2] and L[1] < L
+        f123 := true
+        s123 := L[1]
+    // 2. inside bar
+    if H < H[1] and L > L[1]
+        fIn := true
+        sIn := L[1]
+    // 3. trap: último fundo de 123 ainda não violado, até trapLB candles atrás; este candle é o primeiro a perdê-lo
+    float minBetween = L[1]
+    for r = 2 to trapLB
+        if na(L[r + 1])
+            break
+        if L[r] < L[r + 1] and L[r] < L[r - 1] and minBetween > L[r]
+            if L < L[r]
+                fTrap := true
+            break
+        minBetween := math.min(minBetween, L[r])
+    // 4. barra vermelha ignorada
+    bool whites = true
+    for j = 1 to nWhite
+        if not (C[j] > O[j])
+            whites := false
+    if C < O and whites and H + tk(H) > E
+        fBvi := true
+    // 5. sombra superior ignorada
+    float rng = H - L
+    if rng > 0 and H - math.max(O, C) >= shadow * rng and H + tk(H) > E
+        fSsi := true
+    // 6. trap na MM50
+    if L <= M and C > M and C[1] > M[1]
+        fTmm := true
+    [array.from(f123, fIn, fTrap, fBvi, fSsi, fTmm), s123, sIn]
+
+[bFlags, b123, bIn] = setups(open, high, low, close, ema8, sma50)
+[sFlags, s123, sIn] = setups(-open, -low, -high, -close, -ema8, -sma50)
+
+type Ord
+    string kind
+    float trig      // na série do lado (espelhada nas vendas)
+    float stp
+    int sbar
+    int exp
+    bool trapExt
+
+var array<Ord> buys = array.new<Ord>()
+var array<Ord> sells = array.new<Ord>()
+NAMES = array.from("123", "Inside", "Trap", "BVI", "SSI", "Trap MM50")
+
+addSetups(array<Ord> book, array<bool> flags, float st123, float stIn, float H, float L, int side, bool show) =>
+    bool any = false
+    for i = 0 to 5
+        if flags.get(i)
+            bool en = side == -1 or (i == 0 ? on123 : i == 1 ? onIn : i == 2 ? onTrap : i == 3 ? onBvi : i == 4 ? onSsi : onTmm)
+            if en
+                any := true
+                float st = i == 0 ? st123 : i == 1 ? stIn : L
+                book.push(Ord.new(NAMES.get(i), H + tk(H), st, bar_index, bar_index + 1, i == 2))
+                if show
+                    color col = side == 1 ? colBuy : colSell
+                    float px = side * (H + tk(H))
+                    line.new(bar_index, px, bar_index + 1, px, color = color.new(col, 40), style = line.style_dashed)
+                    label.new(bar_index, side == 1 ? low : high, NAMES.get(i), color = color.new(color.gray, 100),
+                         textcolor = color.new(col, 30), size = size.tiny, style = side == 1 ? label.style_label_up : label.style_label_down)
+    any
+
+fillOrders(array<Ord> book, float O, float H, float L, float pH, float pL, int side) =>
+    bool hit = false
+    string kinds = ""
+    int n = book.size()
+    if n > 0
+        for i = n - 1 to 0
+            Ord ord = book.get(i)
+            if bar_index > ord.exp
+                book.remove(i)
+                continue
+            if bar_index > ord.sbar and H >= ord.trig
+                hit := true
+                kinds += (kinds == "" ? "" : " + ") + ord.kind
+                float px = side * math.max(O, ord.trig)
+                label.new(bar_index, px, side == 1 ? "▲" : "▼", color = color.new(color.gray, 100),
+                     textcolor = side == 1 ? colBuy : colSell, style = label.style_label_center, size = size.normal,
+                     tooltip = (side == 1 ? "Compra " : "Venda ") + ord.kind + "\nEntrada " + str.tostring(px, format.mintick) +
+                     (side == 1 ? "\nStop " + str.tostring(ord.stp, format.mintick) : ""))
+                book.remove(i)
+            else if ord.trapExt and bar_index == ord.sbar + 1 and H <= pH and L >= pL
+                ord.exp := ord.sbar + 2      // trap: o candle seguinte foi inside, a ordem vale mais um candle
+    [hit, kinds]
+
+bool buyFill = false
+bool buySetup = false
+bool sellFill = false
+string buyKinds = ""
+if barstate.isconfirmed and bar_index > 55
+    // 1) ordens armadas nos candles anteriores
+    [bf, bk] = fillOrders(buys, open, high, low, high[1], low[1], 1)
+    [sf, sk] = fillOrders(sells, -open, -low, -high, -low[1], -high[1], -1)
+    buyFill := bf
+    buyKinds := bk
+    sellFill := sf
+    // 2) gap de baixa neste candle: compra se voltar à mínima anterior + 1 tick (inclusive neste mesmo candle)
+    if onGap and open < low[1] and trendUp[1]
+        buys.push(Ord.new("Gap", low[1] + tk(low[1]), na, bar_index - 1, bar_index + gapWait - 1, false))
+        if showSetup
+            line.new(bar_index, low[1] + tk(low[1]), bar_index + gapWait - 1, low[1] + tk(low[1]), color = color.new(colBuy, 40), style = line.style_dashed)
+            label.new(bar_index, low, "Gap", color = color.new(color.gray, 100), textcolor = color.new(colBuy, 30), size = size.tiny, style = label.style_label_up)
+        buySetup := true
+    if showSells and open > high[1]
+        sells.push(Ord.new("Gap", -high[1] + tk(high[1]), na, bar_index - 1, bar_index + gapWait - 1, false))
+    [gf, gk] = fillOrders(buys, open, high, low, high[1], low[1], 1)    // gap fechado no próprio candle do gap
+    if gf
+        buyFill := true
+        buyKinds += (buyKinds == "" ? "" : " + ") + gk
+    if showSells
+        [gs, gsk] = fillOrders(sells, -open, -low, -high, -low[1], -high[1], -1)
+        sellFill := sellFill or gs
+    // 3) setups formados neste candle (ordem para o próximo)
+    if trendUp
+        buySetup := buySetup or addSetups(buys, bFlags, b123, bIn, high, low, 1, showSetup)
+    if showSells
+        addSetups(sells, sFlags, s123, sIn, -low, -high, -1, showSetup)
+
+alertcondition(buySetup, "Campanhas: setup de compra armado", "{{ticker}}: setup de compra armado (Campanhas), fechamento {{close}}")
+alertcondition(buyFill, "Campanhas: compra executada", "{{ticker}}: compra (Campanhas) executada no candle de {{time}}")
+alertcondition(sellFill, "Campanhas: sinal de venda", "{{ticker}}: sinal de venda (Campanhas)")
+if buyFill
+    alert(syminfo.ticker + ": compra Campanhas (" + buyKinds + ")", alert.freq_once_per_bar_close)
