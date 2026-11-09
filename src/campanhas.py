@@ -27,6 +27,9 @@ BANK = 10_000
 # CAMP_GAP=pior: limite pessimista do gap (a mínima do dia sempre veio depois da entrada: stop na abertura,
 # acionado no mesmo dia se a mínima ficou abaixo dela). O dado diário não diz a ordem intradiária.
 GAP_PIOR = os.environ.get('CAMP_GAP') == 'pior'
+# CAMP_GAP=1h: resolve o dia da entrada com barras de 1h (data/<TICKER>/h1.csv), em todos os gatilhos: hora da entrada,
+# mínima conhecida até ela (stop do gap) e stop/alvo no resto do dia. Dias sem 1h seguem a convenção diária.
+INTRA = os.environ.get('CAMP_GAP') == '1h'
 
 def tick(p): return min(0.01, p * 0.0005)
 
@@ -40,7 +43,23 @@ def prep(df):
     ll, hh = df.l.rolling(14).min(), df.h.rolling(14).max()
     d['k'] = (100 * (df.c - ll) / (hh - ll)).rolling(3).mean().values
     d['date'] = pd.to_datetime(df.t, unit='s').dt.date.values
+    d['h1'] = {}
+    f = os.path.join(DATA_ROOT, df.attrs.get('sym', ''), 'h1.csv')
+    if INTRA and os.path.exists(f):
+        H = pd.read_csv(f); H['date'] = pd.to_datetime(H.t, unit='s').dt.date
+        d['h1'] = {k: g[['o', 'h', 'l', 'c']].values.astype(float) for k, g in H.groupby('date')}
     return d
+
+def entry_1h(B, trig):
+    """barras de 1h do dia: (hora da entrada, preço, menor preço conhecido até a entrada) ou None"""
+    lsf = np.inf
+    for k, (o, h, l, c) in enumerate(B):
+        if h >= trig:
+            px = max(o, trig)
+            lsf = min(lsf, l if (c >= o and o < px) else o)   # hora de alta: a mínima veio antes da entrada
+            return k, px, lsf
+        lsf = min(lsf, l)
+    return None
 
 def signals(d, side):
     """side = 1: compras; -1: vendas (espelho). Lista de (kind, s, gatilho, stop, janela de pregões)."""
@@ -89,33 +108,57 @@ def backtest(d, buys, sells_by_bar, kinds, exit_kind, start_date):
         if kind not in kinds: continue
         for e in win:
             if h[e] >= trig:
-                px = max(o[e], trig)
+                px = max(o[e], trig); hk = None
                 # gap: stop na mínima do candle que fechou o gap, conhecida até a entrada
                 # (alta O->L->H: a mínima veio antes; baixa O->H->L: até a entrada a mínima era a abertura)
                 st = (l[e] if c[e] >= o[e] and not GAP_PIOR else o[e]) if kind == 'gap' else stop
+                B = d['h1'].get(d['date'][e])
+                if B is not None and (r := entry_1h(B, trig)) is not None:
+                    hk, px, lsf = r
+                    if kind == 'gap': st = lsf
                 if d['date'][e] >= start_date and dev[e] and d['trend'][e - 1] and st < px:
-                    cands.append((e, px, KINDS.index(kind), kind, s, st))
+                    cands.append((e, px, KINDS.index(kind), kind, s, st, hk))
                 break
     cands.sort()
     trades, free = [], -1
-    for e, px, _, kind, s, st in cands:
+    for e, px, _, kind, s, st, hk in cands:
         if e <= free: continue
         risk = px - st
         tg = {'topo': last_top_above(d, px, e) or px + 2 * risk, '2R': px + 2 * risk, '3R': px + 3 * risk}.get(exit_kind)
-        x = sim(d, e, px, st, tg, exit_kind, sells_by_bar)
+        x = sim(d, e, px, st, tg, exit_kind, sells_by_bar, hk)
         if x is None: break   # trade ainda aberto: fim da série
         xd, xp, why = x; free = xd
         trades.append(dict(trig=kind, edate=d['date'][e], xdate=d['date'][xd], entry=px, stop_px=st, tgt_px=tg, exit=xp, reason=why))
     return trades
 
-def sim(d, e, px, st, tg, exit_kind, sells_by_bar):
+def bar_path(o, h, l, c, px=None):
+    """preços depois da entrada no candle (convenção: alta O->L->H->C, baixa O->H->L->C); px=None: candle inteiro"""
+    if px is None or o >= px: return [l, h] if c >= o else [h, l]
+    return [h] if c >= o else [h, l]
+
+def sim(d, e, px, st, tg, exit_kind, sells_by_bar, hk=None):
     o, h, l, c, k = d['o'], d['h'], d['l'], d['c'], d['k']; n = len(c)
+    if hk is not None:   # dia da entrada hora a hora
+        B = d['h1'][d['date'][e]]
+        for i in range(hk, len(B)):
+            ho, hh, hl, hc = B[i]
+            if i > hk:
+                if ho <= st: return e, ho, 'stop'
+                if tg is not None and ho >= tg: return e, ho, 'alvo'
+            for p in bar_path(ho, hh, hl, hc, px if i == hk else None):
+                if p <= st: return e, st, 'stop'
+                if tg is not None and p >= tg: return e, tg, 'alvo'
+        return sim_after(d, e, st, tg, exit_kind, sells_by_bar)
     # resto do candle de entrada (convenção: alta O->L->H->C, baixa O->H->L->C)
     seq = ([l[e], h[e]] if c[e] >= o[e] else [h[e], l[e]]) if o[e] >= px else ([h[e]] if c[e] >= o[e] and not (GAP_PIOR and st == o[e]) else [h[e], l[e]])
     for p in seq:
         if p <= st: return e, st, 'stop'
         if tg is not None and p >= tg: return e, tg, 'alvo'
     if c[e] <= st: return e, st, 'stop'
+    return sim_after(d, e, st, tg, exit_kind, sells_by_bar)
+
+def sim_after(d, e, st, tg, exit_kind, sells_by_bar):
+    o, h, l, c, k = d['o'], d['h'], d['l'], d['c'], d['k']; n = len(c)
     for j in range(e + 1, n):
         if j - e > MAXBARS: return j - 1, c[j - 1], 'tempo'
         down = st
@@ -143,7 +186,7 @@ def stats(T, start, end):
 
 def run(args):
     sym, since = args
-    df = pd.read_csv(os.path.join(DATA_ROOT, sym, 'd.csv')); d = prep(df)
+    df = pd.read_csv(os.path.join(DATA_ROOT, sym, 'd.csv')); df.attrs['sym'] = sym; d = prep(df)
     buys = signals(d, 1)
     sells = {}
     for _, s, g, _, win in signals(d, -1):
