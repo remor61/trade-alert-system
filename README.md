@@ -71,7 +71,7 @@ Banca de 10.000 USD, risco de ~100 USD por trade: quantidade = ⌊100 ÷ (entrad
 Estratégia própria, sem relação com o setup Slow Stoch. Só compras, tudo no diário. Mesma banca, sizing e regra de meses D/R acima.
 
 - **Filtro**: MM50 diária subindo (MM50 > MM50 de 4 pregões atrás), medida no último candle fechado antes da entrada. O preço não precisa estar acima da média.
-- **Entrada**: ordem stop 1 tick acima do preço de gatilho (tick = 0,01, ou 0,05% do preço em preços muito baixos), no candle seguinte ao sinal.
+- **Entrada**: ordem stop 1 tick acima do preço de gatilho (tick = 0,01, ou 0,05% do preço em preços muito baixos), no candle seguinte ao sinal. Nos gatilhos de rompimento (todos menos o gap) o candle da entrada precisa passar pelo preço de gatilho: se abrir acima dele (gap), não há trade.
 - **Gatilhos**:
   1. **123 de compra**: mínima do 2º candle abaixo das do 1º e do 3º; gatilho na máxima do 3º; stop na mínima do 2º.
   2. **Inside bar**: candle dentro do anterior; gatilho na máxima do inside; stop na mínima do candle-mãe.
