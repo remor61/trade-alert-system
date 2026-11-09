@@ -18,7 +18,6 @@ grpP = "Parâmetros"
 nWhite = input.int(3, "BVI: candles brancos antes do vermelho", minval = 1, group = grpP)
 shadow = input.float(0.5, "SSI: sombra mínima (fração do candle)", step = 0.05, group = grpP)
 trapLB = input.int(50, "Trap: fundo até N candles atrás", minval = 3, maxval = 200, group = grpP)
-gapWait = input.int(5, "Gap: pregões para fechar o gap", minval = 1, group = grpP)
 grpV = "Visual"
 showSetup = input.bool(true, "Mostrar setups armados", group = grpV)
 showSells = input.bool(false, "Mostrar sinais de venda (saída 'sinal')", group = grpV)
@@ -145,15 +144,15 @@ if barstate.isconfirmed and bar_index > 55
     buyFill := bf
     buyKinds := bk
     sellFill := sf
-    // 2) gap de baixa neste candle: compra se voltar à mínima anterior + 1 tick (inclusive neste mesmo candle)
+    // 2) gap de baixa neste candle: compra se voltar à mínima anterior + 1 tick no próprio candle do gap
     if onGap and open < low[1] and trendUp[1]
-        buys.push(Ord.new("Gap", low[1] + tk(low[1]), na, bar_index - 1, bar_index + gapWait - 1, false))
+        buys.push(Ord.new("Gap", low[1] + tk(low[1]), na, bar_index - 1, bar_index, false))
         if showSetup
-            line.new(bar_index, low[1] + tk(low[1]), bar_index + gapWait - 1, low[1] + tk(low[1]), color = color.new(colBuy, 40), style = line.style_dashed)
+            line.new(bar_index - 1, low[1] + tk(low[1]), bar_index, low[1] + tk(low[1]), color = color.new(colBuy, 40), style = line.style_dashed)
             label.new(bar_index, low, "Gap", color = color.new(color.gray, 100), textcolor = color.new(colBuy, 30), size = size.tiny, style = label.style_label_up)
         buySetup := true
     if showSells and open > high[1]
-        sells.push(Ord.new("Gap", -high[1] + tk(high[1]), na, bar_index - 1, bar_index + gapWait - 1, false))
+        sells.push(Ord.new("Gap", -high[1] + tk(high[1]), na, bar_index - 1, bar_index, false))
     [gf, gk] = fillOrders(buys, open, high, low, high[1], low[1], 1)    // gap fechado no próprio candle do gap
     if gf
         buyFill := true

@@ -8,7 +8,7 @@ Gatilhos (compra por ordem stop 1 tick acima do preço de gatilho; tick = min(0,
   bvi     barra vermelha ignorada: único candle vermelho depois de >= 3 brancos; gatilho máx. dele, acima da MME8; stop mín.
   ssi     sombra superior ignorada: sombra superior >= 50% da amplitude; gatilho máx., acima da MME8; stop mín.
   trapmm  trap na MM50: mínima toca/fura a MM50 e fecha acima, vindo de fechamento acima; gatilho máx.; stop mín.
-  gap     gap de baixa (abertura < mín. anterior); entrada quando volta à mín. anterior + 1 tick (até 5 pregões);
+  gap     gap de baixa (abertura < mín. anterior); entrada quando volta à mín. anterior + 1 tick no próprio candle do gap;
           stop na mínima do candle que fechou o gap conhecida até a entrada (candle de baixa: a abertura)
 Saídas (cada teste roda com todas): topo (último topo diário acima da entrada, senão 2R), 2R, 3R,
   sinal (qualquer gatilho de venda espelhado formado depois da entrada), stoch (Slow Stoch 14/3 %K > 80 no fechamento).
@@ -22,7 +22,7 @@ from sizing import shares
 
 KINDS = ['123', 'inside', 'trap', 'bvi', 'ssi', 'trapmm', 'gap']
 EXITS = ['topo', '2R', '3R', 'sinal', 'stoch']
-NWHITE, SHADOW, TRAPLB, GAPWAIT, MAXBARS = 3, 0.5, 50, 5, 260
+NWHITE, SHADOW, TRAPLB, GAPWAIT, MAXBARS = 3, 0.5, 50, 1, 260   # GAPWAIT = 1: o gap fecha no candle que abriu abaixo
 BANK = 10_000
 # CAMP_GAP=pior: limite pessimista do gap (a mínima do dia sempre veio depois da entrada: stop na abertura,
 # acionado no mesmo dia se a mínima ficou abaixo dela). O dado diário não diz a ordem intradiária.
