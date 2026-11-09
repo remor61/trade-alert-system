@@ -27,9 +27,12 @@ BANK = 10_000
 # CAMP_GAP=pior: limite pessimista do gap (a mínima do dia sempre veio depois da entrada: stop na abertura,
 # acionado no mesmo dia se a mínima ficou abaixo dela). O dado diário não diz a ordem intradiária.
 GAP_PIOR = os.environ.get('CAMP_GAP') == 'pior'
-# CAMP_GAP=1h: resolve o dia da entrada com barras de 1h (data/<TICKER>/h1.csv), em todos os gatilhos: hora da entrada,
-# mínima conhecida até ela (stop do gap) e stop/alvo no resto do dia. Dias sem 1h seguem a convenção diária.
-INTRA = os.environ.get('CAMP_GAP') == '1h'
+# CAMP_GAP=1h ou 15m: resolve o dia da entrada com barras intradiárias (data/<TICKER>/h1.csv ou m15.csv), em todos os
+# gatilhos: barra da entrada, mínima conhecida até ela (stop do gap) e stop/alvo no resto do dia. Dias sem dado intradiário
+# seguem a convenção diária. Sufixo _pior (1h_pior, 15m_pior): dentro da barra da entrada a mínima vem sempre depois dela.
+_MODE = os.environ.get('CAMP_GAP', '')
+INTRA = {'1h': 'h1.csv', '15m': 'm15.csv'}.get(_MODE.replace('_pior', ''))
+INTRA_PIOR = _MODE.endswith('_pior') and INTRA is not None
 
 def tick(p): return min(0.01, p * 0.0005)
 
@@ -44,19 +47,19 @@ def prep(df):
     d['k'] = (100 * (df.c - ll) / (hh - ll)).rolling(3).mean().values
     d['date'] = pd.to_datetime(df.t, unit='s').dt.date.values
     d['h1'] = {}
-    f = os.path.join(DATA_ROOT, df.attrs.get('sym', ''), 'h1.csv')
+    f = os.path.join(DATA_ROOT, df.attrs.get('sym', ''), INTRA or 'h1.csv')
     if INTRA and os.path.exists(f):
         H = pd.read_csv(f); H['date'] = pd.to_datetime(H.t, unit='s').dt.date
         d['h1'] = {k: g[['o', 'h', 'l', 'c']].values.astype(float) for k, g in H.groupby('date')}
     return d
 
 def entry_1h(B, trig):
-    """barras de 1h do dia: (hora da entrada, preço, menor preço conhecido até a entrada) ou None"""
+    """barras intradiárias do dia: (barra da entrada, preço, menor preço conhecido até a entrada) ou None"""
     lsf = np.inf
     for k, (o, h, l, c) in enumerate(B):
         if h >= trig:
             px = max(o, trig)
-            lsf = min(lsf, l if (c >= o and o < px) else o)   # hora de alta: a mínima veio antes da entrada
+            lsf = min(lsf, l if (c >= o and o < px and not INTRA_PIOR) else o)   # barra de alta: a mínima veio antes
             return k, px, lsf
         lsf = min(lsf, l)
     return None
@@ -134,11 +137,11 @@ def backtest(d, buys, sells_by_bar, kinds, exit_kind, start_date):
 def bar_path(o, h, l, c, px=None):
     """preços depois da entrada no candle (convenção: alta O->L->H->C, baixa O->H->L->C); px=None: candle inteiro"""
     if px is None or o >= px: return [l, h] if c >= o else [h, l]
-    return [h] if c >= o else [h, l]
+    return [h] if c >= o and not INTRA_PIOR else [h, l]
 
 def sim(d, e, px, st, tg, exit_kind, sells_by_bar, hk=None):
     o, h, l, c, k = d['o'], d['h'], d['l'], d['c'], d['k']; n = len(c)
-    if hk is not None:   # dia da entrada hora a hora
+    if hk is not None:   # dia da entrada barra a barra (intradiário)
         B = d['h1'][d['date'][e]]
         for i in range(hk, len(B)):
             ho, hh, hl, hc = B[i]
