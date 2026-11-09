@@ -21,7 +21,7 @@ grpP = "Parâmetros"
 nWhite = input.int(3, "BVI: candles brancos antes do vermelho", minval = 1, group = grpP)
 shadow = input.float(0.5, "SSI: sombra mínima (fração do candle)", step = 0.05, group = grpP)
 trapLB = input.int(50, "Trap: fundo até N candles atrás", minval = 3, maxval = 200, group = grpP)
-trapSh = input.float(0.0, "Trap: sombra inferior mínima (fração do candle)", step = 0.05, group = grpP)
+trapSh = input.float(0.7, "Trap: sombra inferior mínima (fração do candle)", step = 0.05, group = grpP)
 earnD  = input.int(0, "Sem compra se houver earnings em até N pregões", minval = 0, group = grpP)
 grpV = "Visual"
 showSetup = input.bool(true, "Mostrar setups armados", group = grpV)

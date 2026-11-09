@@ -26,7 +26,7 @@ from sizing import shares
 KINDS = ['123', 'inside', 'trap', 'bvi', 'ssi', 'trapmm', 'gap']
 EXITS = ['topo', '2R', '3R', 'sinal', 'stoch']
 NWHITE, SHADOW, TRAPLB, GAPWAIT, MAXBARS = 3, 0.5, 50, 1, 260   # GAPWAIT = 1: o gap fecha no candle que abriu abaixo
-TRAPSHADOW, EARNDAYS = 0.0, 3   # trap: sombra inferior mínima (fração do candle); earnings nos próximos 3 pregões bloqueiam a entrada
+TRAPSHADOW, EARNDAYS = 0.7, 3   # trap: sombra inferior >= 70% do candle; earnings nos próximos 3 pregões bloqueiam a entrada
 USA_EARNINGS = False
 PASSA_GATILHO = True   # rompimento só vale se o candle da entrada passar pelo gatilho (abrir abaixo dele)
 BANK = 10_000

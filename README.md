@@ -75,7 +75,7 @@ Estratégia própria, sem relação com o setup Slow Stoch. Só compras, tudo no
 - **Gatilhos**:
   1. **123 de compra**: mínima do 2º candle abaixo das do 1º e do 3º; gatilho na máxima do 3º; stop na mínima do 2º.
   2. **Inside bar**: candle dentro do anterior; gatilho na máxima do inside; stop na mínima do candle-mãe.
-  3. **Trap**: candle que perde o último fundo de 123 ainda não violado, até 50 candles atrás; gatilho na máxima dele, no candle seguinte (ou no segundo, se o primeiro for inside); stop na mínima do candle da armadilha.
+  3. **Trap**: candle que perde o último fundo de 123 ainda não violado, até 50 candles atrás, e deixa sombra inferior de pelo menos 70% da amplitude do candle; gatilho na máxima dele, no candle seguinte (ou no segundo, se o primeiro for inside); stop na mínima do candle da armadilha.
   4. **Barra vermelha ignorada**: único candle vermelho depois de pelo menos 3 brancos; gatilho na máxima dele, que precisa estar acima da MME8; stop na mínima.
   5. **Sombra superior ignorada**: sombra superior ≥ 50% da amplitude do candle; gatilho na máxima, acima da MME8; stop na mínima.
   6. **Trap na MM50**: mínima toca ou fura a MM50 e o candle fecha acima dela (sombra inferior), vindo de fechamento acima; gatilho na máxima; stop na mínima.
