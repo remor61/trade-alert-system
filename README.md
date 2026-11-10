@@ -71,18 +71,17 @@ Banca de 10.000 USD, risco de ~100 USD por trade: quantidade = ⌊100 ÷ (entrad
 Estratégia própria, sem relação com o setup Slow Stoch. Só compras, tudo no diário. Mesma banca, sizing e regra de meses D/R acima.
 
 - **Filtro**: MM50 diária subindo (MM50 > MM50 de 4 pregões atrás), medida no último candle fechado antes da entrada. O preço não precisa estar acima da média.
-- **Entrada**: ordem stop 1 tick acima do preço de gatilho (tick = 0,01, ou 0,05% do preço em preços muito baixos), no candle seguinte ao sinal. Nos gatilhos de rompimento (todos menos o gap) o candle da entrada precisa passar pelo preço de gatilho: se abrir acima dele (gap), não há trade.
+- **Entrada**: ordem stop 1 tick acima do preço de gatilho (tick = 0,01, ou 0,05% do preço em preços muito baixos), no candle seguinte ao sinal.
 - **Gatilhos**:
   1. **123 de compra**: mínima do 2º candle abaixo das do 1º e do 3º; gatilho na máxima do 3º; stop na mínima do 2º.
   2. **Inside bar**: candle dentro do anterior; gatilho na máxima do inside; stop na mínima do candle-mãe.
-  3. **Trap**: candle que perde o último fundo de 123 ainda não violado, até 50 candles atrás, e deixa sombra inferior de pelo menos 70% da amplitude do candle; gatilho na máxima dele, no candle seguinte (ou no segundo, se o primeiro for inside); stop na mínima do candle da armadilha.
+  3. **Trap**: candle que perde o último fundo de 123 ainda não violado, até 50 candles atrás; gatilho na máxima dele, no candle seguinte (ou no segundo, se o primeiro for inside); stop na mínima do candle da armadilha.
   4. **Barra vermelha ignorada**: único candle vermelho depois de pelo menos 3 brancos; gatilho na máxima dele, que precisa estar acima da MME8; stop na mínima.
   5. **Sombra superior ignorada**: sombra superior ≥ 50% da amplitude do candle; gatilho na máxima, acima da MME8; stop na mínima.
   6. **Trap na MM50**: mínima toca ou fura a MM50 e o candle fecha acima dela (sombra inferior), vindo de fechamento acima; gatilho na máxima; stop na mínima.
   7. **Gap de compra**: abertura abaixo da mínima anterior; compra quando o preço volta à mínima anterior + 1 tick no próprio candle do gap (o que abriu abaixo); stop na mínima do candle que fechou o gap, conhecida até a entrada (candle de baixa: a abertura).
 - **Saídas** (cada teste roda com todas): topo anterior (último topo diário acima da entrada; sem topo, 2R), 2R, 3R, sinal de venda (qualquer gatilho espelhado formado depois da entrada) e Slow Stoch 14/3 com %K > 80 no fechamento. O stop vale sempre; saída por tempo após 260 pregões.
 - **Execução**: uma posição por vez por ativo; com posição aberta, novos sinais são ignorados. Banca independente por ativo.
-- **Earnings**: sem entrada se houver divulgação de resultado entre a abertura do pregão da entrada e o fim do 3º pregão seguinte. Datas em `data/<TICKER>/earnings.csv`, gravadas pelo `import_tv.py` a partir do `mcp-tv-get-documents` (teleconferências; BRK.B pelos comunicados 8-K). Hoje só os 15 ativos do estudo têm o arquivo; nos outros a regra não é aplicada.
 - **Gap e dado diário**: o stop do gap fica muito perto da entrada (~0,4–0,7% do preço, mediana) e o resultado depende da ordem dos preços dentro do dia. Na convenção do repositório (candle de alta: abertura → mínima → máxima → fechamento) o gap é o melhor gatilho; no limite pessimista (`CAMP_GAP=pior`: a mínima sempre veio depois da entrada) é o pior. Por isso o teste "todos sem gap" existe à parte. `CAMP_GAP=1h` ou `15m` resolve o dia da entrada com barras intradiárias (`data/<TICKER>/h1.csv`, desde jan/2023; `m15.csv`, desde fev/2026); o sufixo `_pior` dá o limite pessimista dentro da barra. Nos 15 ativos do estudo, com o gap fechando no próprio candle: 1h desde 2023 +86% a +157% (pior dentro da hora −16% a −94%); 15 min desde fev/2026 +12% a +23% (pior dentro da barra −8% a +5%). A vantagem do gap existe, mas é bem menor do que o diário sugere e a amostra intradiária ainda é curta.
 - Rodar: `python src/campanhas.py [--desde AAAA-MM-DD] [TICKER ...]` grava `results/campanhas_*.csv`.
 

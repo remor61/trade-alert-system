@@ -2,9 +2,6 @@
 // Estratégia "Campanhas" (src/campanhas.py): só compras, no diário. Filtro: MM50 subindo (MM50 > MM50 de 4 candles atrás)
 // no candle do sinal. Gatilhos: 123, inside bar, trap (fundo de até 50 candles), barra vermelha ignorada, sombra superior
 // ignorada, trap na MM50, gap de baixa fechado. Compra 1 tick acima do gatilho (tick = min(0,01; 0,05% do preço)).
-// Nos gatilhos de rompimento o candle da entrada precisa passar pelo gatilho: se abrir acima (gap), não há compra (✕ cinza).
-// Trap só vale com sombra inferior >= 70% do candle. Sem compra se houver resultado (earnings) até 3 pregões depois (✕ cinza):
-// no histórico pelo request.earnings (a compra é riscada quando o resultado aparece), em tempo real por earnings.future_time.
 // Marcadores: rótulo cinza = setup armado (linha tracejada no preço de gatilho); ▲ verde = compra executada.
 // Opcional: setups de venda espelhados (saída "sinal" da estratégia).
 indicator("Campanhas", overlay = true, max_lines_count = 500, max_labels_count = 500, max_bars_back = 300)
@@ -21,8 +18,6 @@ grpP = "Parâmetros"
 nWhite = input.int(3, "BVI: candles brancos antes do vermelho", minval = 1, group = grpP)
 shadow = input.float(0.5, "SSI: sombra mínima (fração do candle)", step = 0.05, group = grpP)
 trapLB = input.int(50, "Trap: fundo até N candles atrás", minval = 3, maxval = 200, group = grpP)
-trapSh = input.float(0.7, "Trap: sombra inferior mínima (fração do candle)", step = 0.05, group = grpP)
-earnD  = input.int(3, "Sem compra se houver earnings em até N pregões", minval = 0, group = grpP)
 grpV = "Visual"
 showSetup = input.bool(true, "Mostrar setups armados", group = grpV)
 showSells = input.bool(false, "Mostrar sinais de venda (saída 'sinal')", group = grpV)
@@ -37,20 +32,6 @@ plot(showMA ? sma50 : na, "MM50", color = trendUp ? color.new(colBuy, 30) : colo
 plot(showMA ? ema8 : na, "MME8", color = color.new(color.orange, 40))
 
 tk(float p) => math.min(0.01, math.abs(p) * 0.0005)
-
-// earnings: barra do resultado (histórico) e próximo resultado previsto (tempo real)
-float epsNow = request.earnings(syminfo.tickerid, earnings.actual, barmerge.gaps_on, ignore_invalid_symbol = true)
-bool earnBar = not na(epsNow)
-bizEnd(int t, int n) =>
-    int d = t
-    int k = 0
-    while k < n
-        d += 86400000
-        int wd = dayofweek(d, syminfo.timezone)
-        if wd != dayofweek.saturday and wd != dayofweek.sunday
-            k += 1
-    d + 86400000
-bool earnSoon = earnD > 0 and not na(earnings.future_time) and earnings.future_time >= time and earnings.future_time <= bizEnd(time, earnD)
 
 // Setups no candle atual, numa série que pode estar espelhada (side = -1: H = -low, L = -high ...).
 // Retorna um bool por gatilho e o stop do 123 e do inside; o preço de gatilho é H + tick.
@@ -72,14 +53,12 @@ setups(float O, float H, float L, float C, float E, float M) =>
         fIn := true
         sIn := L[1]
     // 3. trap: último fundo de 123 ainda não violado, até trapLB candles atrás; este candle é o primeiro a perdê-lo
-    //    e deixa sombra inferior >= trapSh do candle
-    float rngT = H - L
     float minBetween = L[1]
     for r = 2 to trapLB
         if na(L[r + 1])
             break
         if L[r] < L[r + 1] and L[r] < L[r - 1] and minBetween > L[r]
-            if L < L[r] and rngT > 0 and math.min(O, C) - L >= trapSh * rngT
+            if L < L[r]
                 fTrap := true
             break
         minBetween := math.min(minBetween, L[r])
@@ -131,14 +110,7 @@ addSetups(array<Ord> book, array<bool> flags, float st123, float stIn, float H, 
                          textcolor = color.new(col, 30), size = size.tiny, style = side == 1 ? label.style_label_up : label.style_label_down)
     any
 
-var array<label> entL = array.new<label>()
-var array<int> entB = array.new<int>()
-skip(float px, string why) =>
-    if showSetup
-        label.new(bar_index, px, "✕", color = color.new(color.gray, 100), textcolor = color.gray, style = label.style_label_center,
-             size = size.small, tooltip = why)
-
-fillOrders(array<Ord> book, float O, float H, float L, float pH, float pL, int side, bool earnBlock) =>
+fillOrders(array<Ord> book, float O, float H, float L, float pH, float pL, int side) =>
     bool hit = false
     string kinds = ""
     int n = book.size()
@@ -148,25 +120,14 @@ fillOrders(array<Ord> book, float O, float H, float L, float pH, float pL, int s
             if bar_index > ord.exp
                 book.remove(i)
                 continue
-            if side == 1 and bar_index > ord.sbar and H >= ord.trig and ord.kind != "Gap" and O >= ord.trig
-                skip(O, ord.kind + ": abriu acima do gatilho, sem compra")
-                book.remove(i)
-                continue
-            if side == 1 and bar_index > ord.sbar and H >= ord.trig and earnBlock
-                skip(ord.trig, ord.kind + ": earnings nos próximos pregões, sem compra")
-                book.remove(i)
-                continue
             if bar_index > ord.sbar and H >= ord.trig
                 hit := true
                 kinds += (kinds == "" ? "" : " + ") + ord.kind
                 float px = side * math.max(O, ord.trig)
-                label lb = label.new(bar_index, px, side == 1 ? "▲" : "▼", color = color.new(color.gray, 100),
+                label.new(bar_index, px, side == 1 ? "▲" : "▼", color = color.new(color.gray, 100),
                      textcolor = side == 1 ? colBuy : colSell, style = label.style_label_center, size = size.normal,
                      tooltip = (side == 1 ? "Compra " : "Venda ") + ord.kind + "\nEntrada " + str.tostring(px, format.mintick) +
                      (side == 1 ? "\nStop " + str.tostring(ord.stp, format.mintick) : ""))
-                if side == 1
-                    entL.push(lb)
-                    entB.push(bar_index)
                 book.remove(i)
             else if ord.trapExt and bar_index == ord.sbar + 1 and H <= pH and L >= pL
                 ord.exp := ord.sbar + 2      // trap: o candle seguinte foi inside, a ordem vale mais um candle
@@ -178,8 +139,8 @@ bool sellFill = false
 string buyKinds = ""
 if barstate.isconfirmed and bar_index > 55
     // 1) ordens armadas nos candles anteriores
-    [bf, bk] = fillOrders(buys, open, high, low, high[1], low[1], 1, earnSoon)
-    [sf, sk] = fillOrders(sells, -open, -low, -high, -low[1], -high[1], -1, false)
+    [bf, bk] = fillOrders(buys, open, high, low, high[1], low[1], 1)
+    [sf, sk] = fillOrders(sells, -open, -low, -high, -low[1], -high[1], -1)
     buyFill := bf
     buyKinds := bk
     sellFill := sf
@@ -192,24 +153,13 @@ if barstate.isconfirmed and bar_index > 55
         buySetup := true
     if showSells and open > high[1]
         sells.push(Ord.new("Gap", -high[1] + tk(high[1]), na, bar_index - 1, bar_index, false))
-    [gf, gk] = fillOrders(buys, open, high, low, high[1], low[1], 1, earnSoon)    // gap fechado no próprio candle do gap
+    [gf, gk] = fillOrders(buys, open, high, low, high[1], low[1], 1)    // gap fechado no próprio candle do gap
     if gf
         buyFill := true
         buyKinds += (buyKinds == "" ? "" : " + ") + gk
     if showSells
-        [gs, gsk] = fillOrders(sells, -open, -low, -high, -low[1], -high[1], -1, false)
+        [gs, gsk] = fillOrders(sells, -open, -low, -high, -low[1], -high[1], -1)
         sellFill := sellFill or gs
-    // histórico: resultado neste candle risca as compras dos últimos earnD pregões (e a deste candle)
-    if earnBar and entB.size() > 0
-        for i = entB.size() - 1 to 0
-            if entB.get(i) >= bar_index - earnD
-                label lb = entL.get(i)
-                lb.set_text("✕")
-                lb.set_textcolor(color.gray)
-                lb.set_tooltip("Compra cancelada: earnings em " + str.format_time(time, "yyyy-MM-dd", syminfo.timezone))
-    while entB.size() > 0 and entB.first() < bar_index - earnD
-        entB.shift()
-        entL.shift()
     // 3) setups formados neste candle (ordem para o próximo)
     if trendUp
         buySetup := buySetup or addSetups(buys, bFlags, b123, bIn, high, low, 1, showSetup)

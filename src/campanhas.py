@@ -1,11 +1,10 @@
 """Estratégia "Campanhas": só compras, tudo no diário. Independente do setup Slow Stoch semanal.
 Filtro: MM50 diária subindo (MM50 > MM50 de 4 pregões atrás), medida no último candle fechado antes da entrada.
-Gatilhos (compra por ordem stop 1 tick acima do preço de gatilho; tick = min(0,01; 0,05% do preço)). Nos gatilhos de
-  rompimento (todos menos o gap) o candle da entrada precisa passar pelo preço de gatilho: se abrir acima (gap), não há trade.
+Gatilhos (compra por ordem stop 1 tick acima do preço de gatilho; tick = min(0,01; 0,05% do preço)):
   123     fundo de 3 candles (mínima do meio < vizinhas); gatilho máx. do 3º; stop mín. do 2º
   inside  candle dentro do anterior; gatilho máx. do inside; stop mín. do candle-mãe
-  trap    candle perde o último fundo de 123 não violado (até 50 candles atrás) e tem sombra inferior >= 70% da amplitude;
-          gatilho máx. dele no candle seguinte (ou no 2º se o 1º for inside); stop mín. do candle da armadilha
+  trap    candle perde o último fundo de 123 não violado (até 50 candles atrás); gatilho máx. dele no candle seguinte
+          (ou no 2º se o 1º for inside); stop mín. do candle da armadilha
   bvi     barra vermelha ignorada: único candle vermelho depois de >= 3 brancos; gatilho máx. dele, acima da MME8; stop mín.
   ssi     sombra superior ignorada: sombra superior >= 50% da amplitude; gatilho máx., acima da MME8; stop mín.
   trapmm  trap na MM50: mínima toca/fura a MM50 e fecha acima, vindo de fechamento acima; gatilho máx.; stop mín.
@@ -14,8 +13,6 @@ Gatilhos (compra por ordem stop 1 tick acima do preço de gatilho; tick = min(0,
 Saídas (cada teste roda com todas): topo (último topo diário acima da entrada, senão 2R), 2R, 3R,
   sinal (qualquer gatilho de venda espelhado formado depois da entrada), stoch (Slow Stoch 14/3 %K > 80 no fechamento).
   O stop vale sempre; saída por tempo após 260 pregões. Uma posição por vez por ativo; entradas só nos meses D.
-Earnings: sem entrada se houver divulgação de resultado do pregão da entrada (após a abertura) até 3 pregões depois
-  (data/<TICKER>/earnings.csv; sem o arquivo a regra não é aplicada naquele ativo).
 uso: python src/campanhas.py [--desde AAAA-MM-DD] [TICKER ...]   (sem tickers = todos de data/)"""
 import os, sys, glob, numpy as np, pandas as pd
 from concurrent.futures import ProcessPoolExecutor
@@ -26,9 +23,6 @@ from sizing import shares
 KINDS = ['123', 'inside', 'trap', 'bvi', 'ssi', 'trapmm', 'gap']
 EXITS = ['topo', '2R', '3R', 'sinal', 'stoch']
 NWHITE, SHADOW, TRAPLB, GAPWAIT, MAXBARS = 3, 0.5, 50, 1, 260   # GAPWAIT = 1: o gap fecha no candle que abriu abaixo
-TRAPSHADOW, EARNDAYS = 0.7, 3   # trap: sombra inferior >= 70% do candle; earnings nos próximos 3 pregões bloqueiam a entrada
-USA_EARNINGS = True
-PASSA_GATILHO = True   # rompimento só vale se o candle da entrada passar pelo gatilho (abrir abaixo dele)
 BANK = 10_000
 # CAMP_GAP=pior: limite pessimista do gap (a mínima do dia sempre veio depois da entrada: stop na abertura,
 # acionado no mesmo dia se a mínima ficou abaixo dela). O dado diário não diz a ordem intradiária.
@@ -52,25 +46,12 @@ def prep(df):
     ll, hh = df.l.rolling(14).min(), df.h.rolling(14).max()
     d['k'] = (100 * (df.c - ll) / (hh - ll)).rolling(3).mean().values
     d['date'] = pd.to_datetime(df.t, unit='s').dt.date.values
-    d['earn'] = earnings_block(df.attrs.get('sym', ''), d['date'])
     d['h1'] = {}
     f = os.path.join(DATA_ROOT, df.attrs.get('sym', ''), INTRA or 'h1.csv')
     if INTRA and os.path.exists(f):
         H = pd.read_csv(f); H['date'] = pd.to_datetime(H.t, unit='s').dt.date
         d['h1'] = {k: g[['o', 'h', 'l', 'c']].values.astype(float) for k, g in H.groupby('date')}
     return d
-
-def earnings_block(sym, dates):
-    """True no pregão e se sai resultado entre a abertura de e e o fim do dia do pregão e+3 (None: sem dados de earnings)"""
-    f = os.path.join(DATA_ROOT, sym, 'earnings.csv')
-    if not USA_EARNINGS or not os.path.exists(f): return None
-    E = pd.read_csv(f); n = len(dates); blk = np.zeros(n, bool)
-    D = pd.to_datetime(pd.Series(dates)).values.astype('datetime64[D]')
-    end = np.r_[D[EARNDAYS:], np.busday_offset(D[-1], np.arange(1, EARNDAYS + 1), roll='forward')]   # data do pregão e+3
-    for dt, hr, so in zip(pd.to_datetime(E.data_et).values.astype('datetime64[D]'), E.hora_et, E.so_data):
-        after_open = so or hr >= '09:30'
-        blk |= ((dt > D) | ((dt == D) & after_open)) & (dt <= end)
-    return blk
 
 def entry_1h(B, trig):
     """barras intradiárias do dia: (barra da entrada, preço, menor preço conhecido até a entrada) ou None"""
@@ -95,17 +76,16 @@ def signals(d, side):
         if l[b] < l[a] and l[b] < l[s]: out.append(('123', s, h[s] + tk(h[s]), l[b], nxt))
         if h[s] < h[s - 1] and l[s] > l[s - 1]: out.append(('inside', s, h[s] + tk(h[s]), l[s - 1], nxt))
         # trap: último fundo de 123 (b-1 > b < b+1) ainda não violado, até TRAPLB candles atrás
-        rng = h[s] - l[s]
         for r in range(s - 2, max(s - TRAPLB, 1) - 1, -1):
             if l[r] < l[r - 1] and l[r] < l[r + 1] and l[r + 1:s].min() > l[r]:
-                # s é o primeiro candle a perder esse fundo e deixa sombra inferior >= 70% do candle
-                if l[s] < l[r] and rng > 0 and min(o[s], c[s]) - l[s] >= TRAPSHADOW * rng:
+                if l[s] < l[r]:   # s é o primeiro candle a perder esse fundo
                     win = nxt + ([s + 2] if s + 2 < n and h[s + 1] <= h[s] and l[s + 1] >= l[s] else [])
                     out.append(('trap', s, h[s] + tk(h[s]), l[s], win))
                 break
         red = c[s] < o[s]
         if red and s >= NWHITE and all(c[s - j] > o[s - j] for j in range(1, NWHITE + 1)) and h[s] + tk(h[s]) > ema[s]:
             out.append(('bvi', s, h[s] + tk(h[s]), l[s], nxt))
+        rng = h[s] - l[s]
         if rng > 0 and (h[s] - max(o[s], c[s])) >= SHADOW * rng and h[s] + tk(h[s]) > ema[s]:
             out.append(('ssi', s, h[s] + tk(h[s]), l[s], nxt))
         if not np.isnan(sma[s - 1]) and l[s] <= sma[s] < c[s] and c[s - 1] > sma[s - 1]:
@@ -131,7 +111,6 @@ def backtest(d, buys, sells_by_bar, kinds, exit_kind, start_date):
         if kind not in kinds: continue
         for e in win:
             if h[e] >= trig:
-                if PASSA_GATILHO and kind != 'gap' and o[e] >= trig: break   # abriu acima do gatilho (gap): o rompimento não acontece, sem trade
                 px = max(o[e], trig); hk = None
                 # gap: stop na mínima do candle que fechou o gap, conhecida até a entrada
                 # (alta O->L->H: a mínima veio antes; baixa O->H->L: até a entrada a mínima era a abertura)
@@ -140,8 +119,7 @@ def backtest(d, buys, sells_by_bar, kinds, exit_kind, start_date):
                 if B is not None and (r := entry_1h(B, trig)) is not None:
                     hk, px, lsf = r
                     if kind == 'gap': st = lsf
-                ok_earn = d['earn'] is None or not d['earn'][e]
-                if d['date'][e] >= start_date and dev[e] and d['trend'][e - 1] and st < px and ok_earn:
+                if d['date'][e] >= start_date and dev[e] and d['trend'][e - 1] and st < px:
                     cands.append((e, px, KINDS.index(kind), kind, s, st, hk))
                 break
     cands.sort()
