@@ -19,6 +19,7 @@ Backtest e monitoramento do setup de compra em sobrevenda do **Slow Stochastic 8
 | `src/pool_wedge.py` | Análise exploratória das cunhas (versão antiga, em R). |
 | `src/run_all.py` | Roda `bt_wedge.py` (que inclui `bt.py`) em todos os ativos em paralelo. |
 | `src/export_vis.py`, `vis/` | Página interativa com cunhas, sinais e trades de um ativo. |
+| `vis/campanhas_page.py` | Gráfico interativo da Campanhas para um ativo: candles, sinais coloridos por gatilho e trades de cada teste e saída (`python vis/campanhas_page.py MSFT --desde 2020-01-01` → `results/campanhas_MSFT.html`). |
 | `src/campanhas.py`, `src/sizing.py` | Estratégia **Campanhas** (independente do setup Slow Stoch): backtest por ativo de cada gatilho e de todos juntos, com as 5 saídas. `sizing.py` é o sizing comum às duas estratégias. |
 | `tradingview/campanhas.pine` | Indicador do TradingView com os 7 gatilhos da Campanhas (setups armados, compras executadas e, opcional, sinais de venda). |
 | `watchlist.txt` | Ativos da watchlist "US Stocks" do TradingView. |
