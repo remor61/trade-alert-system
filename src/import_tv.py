@@ -1,4 +1,4 @@
-"""Monta data/<TICKER>/d.csv e w.csv a partir de respostas do TradingView (ferramenta mcp-tv-get-ohlcv, format: columns).
+"""Monta data/<TICKER>/d.csv e w.csv (e h1.csv / m15.csv, se houver respostas de 1h / 15m) a partir de respostas do TradingView (ferramenta mcp-tv-get-ohlcv, format: columns).
 Aceita arquivos .json/.txt salvos com essas respostas e, com --claude-logs, varre os logs de sessão do Claude Code
 (~/.claude/projects/**/*.jsonl e tool-results/*.txt). Respostas mais novas sobrescrevem as antigas (candle em formação).
 O semanal é montado a partir do diário (semana seg–sex, t = primeiro pregão da semana).
@@ -14,8 +14,8 @@ def take(s, stamp):
     while i >= 0:
         try: j, end = dec.raw_decode(s[i:])
         except Exception: i = s.find('{"bars"', i + 1); continue
-        if j.get('interval') == '1D' and j.get('symbol'):
-            res.setdefault(j['symbol'], []).append((stamp, j['bars']))
+        if j.get('interval') in ('1D', '1h', '15m') and j.get('symbol'):
+            res.setdefault((j['symbol'], j['interval']), []).append((stamp, j['bars']))
         i = s.find('{"bars"', i + end)
 
 def walk(x, stamp):
@@ -38,7 +38,7 @@ if '--claude-logs' in args:
 for p in args:
     take(open(p, errors='ignore').read(), os.path.getmtime(p))
 
-for sym, lst in res.items():
+for (sym, itv), lst in res.items():
     rows = {}
     for _, b in sorted(lst, key=lambda x: x[0]):
         for r in zip(b['t'], b['o'], b['h'], b['l'], b['c'], b['v']): rows[r[0]] = r
@@ -46,6 +46,10 @@ for sym, lst in res.items():
     d['v'] = pd.to_numeric(d['v'], errors='coerce').fillna(0)
     tick = sym.split(':')[-1].replace('.', '_')
     out = os.path.join(DATA_ROOT, tick); os.makedirs(out, exist_ok=True)
+    if itv in ('1h', '15m'):
+        d.to_csv(f'{out}/{"h1" if itv == "1h" else "m15"}.csv', index=False)
+        print(f'{sym:22s} {itv:6s} {len(d):5d} ({pd.to_datetime(d.t.iloc[0], unit="s").date()} → {pd.to_datetime(d.t.iloc[-1], unit="s").date()})')
+        continue
     d.to_csv(f'{out}/d.csv', index=False)
     dt = pd.to_datetime(d.t, unit='s').dt.tz_localize('UTC').dt.tz_convert('America/New_York')
     wk = (dt - pd.to_timedelta(dt.dt.weekday, unit='D')).dt.date
