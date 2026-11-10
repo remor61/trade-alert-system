@@ -21,7 +21,7 @@ Backtest e monitoramento do setup de compra em sobrevenda do **Slow Stochastic 8
 | `src/export_vis.py`, `vis/` | Página interativa com cunhas, sinais e trades de um ativo. |
 | `vis/campanhas_page.py` | Gráfico interativo da Campanhas para um ativo: candles, sinais coloridos por gatilho e trades de cada teste e saída (`python vis/campanhas_page.py MSFT --desde 2020-01-01` → `results/campanhas_MSFT.html`). |
 | `src/campanhas.py`, `src/sizing.py` | Estratégia **Campanhas** (independente do setup Slow Stoch): backtest por ativo de cada gatilho e de todos juntos, com as 5 saídas. `sizing.py` é o sizing comum às duas estratégias. |
-| `tradingview/campanhas.pine` | Indicador do TradingView com os 7 gatilhos da Campanhas (setups armados, compras executadas e, opcional, sinais de venda). |
+| `tradingview/campanhas.pine` | Indicador do TradingView com os 7 gatilhos da Campanhas: candles coloridos por gatilho (mesma paleta do gráfico; o 123 pinta os 3 candles; o gap só quando fecha; label com todos os sinais quando o candle tem mais de um), compras executadas e, opcional, sinais de venda. |
 | `watchlist.txt` | Ativos da watchlist "US Stocks" do TradingView. |
 
 ## Como rodar

@@ -2,7 +2,9 @@
 // Estratégia "Campanhas" (src/campanhas.py): só compras, no diário. Filtro: MM50 subindo (MM50 > MM50 de 4 candles atrás)
 // no candle do sinal. Gatilhos: 123, inside bar, trap (fundo de até 50 candles), barra vermelha ignorada, sombra superior
 // ignorada, trap na MM50, gap de baixa fechado. Compra 1 tick acima do gatilho (tick = min(0,01; 0,05% do preço)).
-// Marcadores: rótulo cinza = setup armado (linha tracejada no preço de gatilho); ▲ verde = compra executada.
+// Sinais = candles coloridos por gatilho (mesma paleta do gráfico de vis/campanhas_page.py); o 123 pinta os 3 candles;
+// o gap só aparece quando fechou no próprio candle. Candle com 2+ sinais: cor de um deles e label com todos.
+// Linha tracejada = preço de gatilho do setup; ▲ verde = compra executada.
 // Opcional: setups de venda espelhados (saída "sinal" da estratégia).
 indicator("Campanhas", overlay = true, max_lines_count = 500, max_labels_count = 500, max_bars_back = 300)
 
@@ -24,6 +26,16 @@ showSells = input.bool(false, "Mostrar sinais de venda (saída 'sinal')", group 
 showMA    = input.bool(true, "Mostrar MM50 e MME8", group = grpV)
 colBuy  = input.color(#1f8a5b, "Compra", group = grpV)
 colSell = input.color(#c8473b, "Venda", group = grpV)
+grpC = "Cores dos sinais"
+c123  = input.color(#2a78d6, "123", group = grpC)
+cIn   = input.color(#eb6834, "Inside bar", group = grpC)
+cTrap = input.color(#1baf7a, "Trap", group = grpC)
+cBvi  = input.color(#eda100, "Barra vermelha ignorada", group = grpC)
+cSsi  = input.color(#e87ba4, "Sombra superior ignorada", group = grpC)
+cTmm  = input.color(#008300, "Trap na MM50", group = grpC)
+cGap  = input.color(#6250d6, "Gap", group = grpC)
+COLS  = array.from(c123, cIn, cTrap, cBvi, cSsi, cTmm, cGap)
+SHORT = array.from("123", "Inside", "Trap", "BVI", "SSI", "Trap MM50", "Gap")
 
 float sma50 = ta.sma(close, 50)
 float ema8  = ta.ema(close, 8)
@@ -103,11 +115,11 @@ addSetups(array<Ord> book, array<bool> flags, float st123, float stIn, float H, 
                 float st = i == 0 ? st123 : i == 1 ? stIn : L
                 book.push(Ord.new(NAMES.get(i), H + tk(H), st, bar_index, bar_index + 1, i == 2))
                 if show
-                    color col = side == 1 ? colBuy : colSell
                     float px = side * (H + tk(H))
-                    line.new(bar_index, px, bar_index + 1, px, color = color.new(col, 40), style = line.style_dashed)
-                    label.new(bar_index, side == 1 ? low : high, NAMES.get(i), color = color.new(color.gray, 100),
-                         textcolor = color.new(col, 30), size = size.tiny, style = side == 1 ? label.style_label_up : label.style_label_down)
+                    line.new(bar_index, px, bar_index + 1, px, color = side == 1 ? color.new(COLS.get(i), 30) : color.new(colSell, 40), style = line.style_dashed)
+                    if side == -1   // vendas (opcional): label, já que a cor do candle é das compras
+                        label.new(bar_index, high, NAMES.get(i), color = color.new(color.gray, 100),
+                             textcolor = color.new(colSell, 30), size = size.tiny, style = label.style_label_down)
     any
 
 fillOrders(array<Ord> book, float O, float H, float L, float pH, float pL, int side) =>
@@ -147,9 +159,8 @@ if barstate.isconfirmed and bar_index > 55
     // 2) gap de baixa neste candle: compra se voltar à mínima anterior + 1 tick no próprio candle do gap
     if onGap and open < low[1] and trendUp[1]
         buys.push(Ord.new("Gap", low[1] + tk(low[1]), na, bar_index - 1, bar_index, false))
-        if showSetup
-            line.new(bar_index - 1, low[1] + tk(low[1]), bar_index, low[1] + tk(low[1]), color = color.new(colBuy, 40), style = line.style_dashed)
-            label.new(bar_index, low, "Gap", color = color.new(color.gray, 100), textcolor = color.new(colBuy, 30), size = size.tiny, style = label.style_label_up)
+        if showSetup and high >= low[1] + tk(low[1])   // só o gap que fechou
+            line.new(bar_index - 1, low[1] + tk(low[1]), bar_index, low[1] + tk(low[1]), color = color.new(cGap, 30), style = line.style_dashed)
         buySetup := true
     if showSells and open > high[1]
         sells.push(Ord.new("Gap", -high[1] + tk(high[1]), na, bar_index - 1, bar_index, false))
@@ -165,6 +176,63 @@ if barstate.isconfirmed and bar_index > 55
         buySetup := buySetup or addSetups(buys, bFlags, b123, bIn, high, low, 1, showSetup)
     if showSells
         addSetups(sells, sFlags, s123, sIn, -low, -high, -1, showSetup)
+
+// ---------- candles coloridos por gatilho ----------
+hasBit(int m, int i) => math.floor(m / math.pow(2, i)) % 2 == 1
+addBit(int m, int i) => hasBit(m, i) ? m : m + int(math.pow(2, i))
+nBits(int m) =>
+    int k = 0
+    for i = 0 to 6
+        if hasBit(m, i)
+            k += 1
+    k
+colorOf(int m) =>
+    color col = na
+    for i = 0 to 6
+        if hasBit(m, i)
+            col := COLS.get(i)
+            break
+    col
+namesOf(int m) =>
+    string t = ""
+    for i = 0 to 6
+        if hasBit(m, i)
+            t += (t == "" ? "" : " · ") + SHORT.get(i)
+    t
+ON = array.from(on123, onIn, onTrap, onBvi, onSsi, onTmm)
+int m0 = 0
+if trendUp and bar_index > 55
+    for i = 0 to 5
+        if bFlags.get(i) and ON.get(i)
+            m0 := addBit(m0, i)
+if onGap and bar_index > 55 and open < low[1] and trendUp[1] and high >= low[1] + tk(low[1])
+    m0 := addBit(m0, 6)   // gap que fechou no próprio candle
+bool new123 = hasBit(m0, 0)
+var int mPrev1 = 0
+var int mPrev2 = 0
+var label labPrev1 = na
+var label labPrev2 = na
+int m1 = new123 ? addBit(mPrev1, 0) : mPrev1   // o 123 também marca os 2 candles anteriores
+int m2 = new123 ? addBit(mPrev2, 0) : mPrev2
+barcolor(colorOf(m0), title = "Sinal")
+barcolor(new123 ? colorOf(m1) : na, offset = -1, title = "123 (2º candle)")
+barcolor(new123 ? colorOf(m2) : na, offset = -2, title = "123 (1º candle)")
+multiLabel(label lb, int m, int back, float y) =>
+    label res = lb
+    if nBits(m) >= 2
+        if na(lb)
+            res := label.new(bar_index - back, y, namesOf(m), color = color.new(color.gray, 100), textcolor = chart.fg_color,
+                 style = label.style_label_up, size = size.tiny)
+        else
+            lb.set_text(namesOf(m))
+    res
+label lab0 = multiLabel(na, m0, 0, low)
+label lab1 = new123 ? multiLabel(labPrev1, m1, 1, low[1]) : labPrev1
+label lab2 = new123 ? multiLabel(labPrev2, m2, 2, low[2]) : labPrev2
+mPrev2 := m1
+mPrev1 := m0
+labPrev2 := lab1
+labPrev1 := lab0
 
 alertcondition(buySetup, "Campanhas: setup de compra armado", "{{ticker}}: setup de compra armado (Campanhas), fechamento {{close}}")
 alertcondition(buyFill, "Campanhas: compra executada", "{{ticker}}: compra (Campanhas) executada no candle de {{time}}")

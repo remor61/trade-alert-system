@@ -19,9 +19,19 @@ dates = d['date']
 sig = {}
 for kind, s, trig, stop, win in C.signals(d, 1):
     if not d['trend'][s]: continue
-    j = s + 1 if kind == 'gap' else s          # gap: o candle do sinal é o próprio candle do gap
-    if j >= len(dates) or j < i0: continue
-    sig.setdefault(j - i0, []).append([C.KINDS.index(kind), round(float(trig), 4), None if stop is None else round(float(stop), 4)])
+    if kind == 'gap':                          # gap: só o que fechou (máxima do candle do gap atingiu o gatilho)
+        if s + 1 >= len(dates) or d['h'][s + 1] < trig: continue
+        marks = [(s + 1, None)]
+    elif kind == '123': marks = [(s - 2, 1), (s - 1, 2), (s, 3)]   # os 3 candles do 123 (papel 1, 2, 3)
+    else: marks = [(s, None)]
+    for j, role in marks:
+        if i0 <= j < len(dates):
+            sig.setdefault(j - i0, []).append([C.KINDS.index(kind), round(float(trig), 4), None if stop is None else round(float(stop), 4), role])
+for j, v in sig.items():   # um registro por gatilho em cada candle (no 123 vale o papel de candle do sinal), na ordem dos gatilhos
+    best = {}
+    for e in v:
+        if e[0] not in best or (e[3] or 3) > (best[e[0]][3] or 3): best[e[0]] = e
+    sig[j] = [best[k] for k in sorted(best)]
 idx = {dt: k - i0 for k, dt in enumerate(dates)}
 T = [[t['teste'], t['saida'], idx[t['edate']], idx[t['xdate']], C.KINDS.index(t['trig']), round(t['entry'], 4), round(t['stop_px'], 4),
       None if t['tgt_px'] is None or t['tgt_px'] != t['tgt_px'] else round(t['tgt_px'], 4), round(t['exit'], 4), t['reason']] for t in trades]
@@ -70,7 +80,7 @@ th,td{padding:3px 8px;border-bottom:1px solid var(--grid);text-align:right}th{co
 @media (max-width:600px){.tile{min-width:90px}.tile b{font-size:15px}}
 </style></head><body><div class="wrap">
 <h1>__SYM__ · Campanhas (diário)</h1>
-<p class="sub">Candles cinza = sem sinal. Candle colorido = sinal de compra com a MM50 subindo (cor = gatilho; o gap marca o próprio candle do gap). ▲ entrada, ● saída; linha verde = trade com lucro, vermelha = prejuízo; tracejados = stop e alvo. Faixas sombreadas = meses R (sem entradas). Roda do mouse dá zoom, arrastar move.</p>
+<p class="sub">Candles cinza = sem sinal. Candle colorido = sinal de compra com a MM50 subindo (cor = gatilho; o 123 pinta os 3 candles; o gap marca o próprio candle e só quando fechou). Candle com mais de um sinal tem a cor de um deles e a sigla de todos. ▲ entrada, ● saída; linha verde = trade com lucro, vermelha = prejuízo; tracejados = stop e alvo. Faixas sombreadas = meses R (sem entradas). Roda do mouse dá zoom, arrastar move.</p>
 <div class="bar">
  <label>Teste <select id="teste"></select></label>
  <label>Saída <select id="saida"></select></label>
@@ -101,7 +111,7 @@ const view={start:Math.max(0,N-260),n:260};let W=0,H=0,AX=64,css={},hover=null;
 for(const k of ['todos','todos_sem_gap',...D.kinds]){const o=document.createElement('option');o.value=k;o.textContent=TN[k];$('teste').appendChild(o)}
 for(const k of Object.keys(SX)){const o=document.createElement('option');o.value=k;o.textContent=SX[k];$('saida').appendChild(o)}
 $('teste').value=S.teste;$('saida').value=S.saida;
-const nSig=D.kinds.map(()=>0);for(const v of Object.values(D.sig))for(const s of v)nSig[s[0]]++;
+const nSig=D.kinds.map(()=>0);for(const v of Object.values(D.sig))for(const s of v)if(s[3]==null||s[3]===3)nSig[s[0]]++;
 D.kinds.forEach((k,i)=>{const c=document.createElement('span');c.className='chip';c.innerHTML=`<i style="background:var(--k${i})"></i>${KN[k]} <small>${KS[i]} · ${nSig[i]}</small>`;
  c.onclick=()=>{S.on[i]=!S.on[i];c.classList.toggle('off',!S.on[i]);draw()};$('legend').appendChild(c)});
 const trades=()=>D.trades.filter(t=>t[0]===S.teste&&t[1]===S.saida);
@@ -133,7 +143,7 @@ function draw(){rc();range();const a=Math.max(0,Math.floor(view.start)),b=Math.m
   ctx.strokeStyle=col;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(Math.round(x)+.5,yOf(D.h[i]));ctx.lineTo(Math.round(x)+.5,yOf(D.l[i]));ctx.stroke();
   const y1=yOf(Math.max(D.o[i],D.c[i])),y2=yOf(Math.min(D.o[i],D.c[i])),hh=Math.max(1,y2-y1);
   if(bwv>2.5){if(up&&!ss.length){ctx.fillStyle=css.panel;ctx.fillRect(x-cw/2,y1,cw,hh);ctx.strokeRect(x-cw/2+.5,y1+.5,cw-1,Math.max(0,hh-1))}else{ctx.fillStyle=col;ctx.fillRect(x-cw/2,y1,cw,hh)}}
-  if(ss.length&&bwv>=9){ctx.fillStyle=css.ink2;ctx.textAlign='center';ctx.fillText(ss.map(s=>KS[s[0]]).join(''),x,yOf(D.h[i])-4);ctx.textAlign='left'}}
+  if(ss.length>1&&bwv>=6){ctx.fillStyle=css.ink2;ctx.textAlign='center';ctx.fillText(ss.map(s=>KS[s[0]]).join(''),x,yOf(D.h[i])-4);ctx.textAlign='left'}}
  if(S.tr){for(const t of trades()){const[,,e,xd,k,en,st,tg,ex]=t;if(xd<a-1||e>b+1)continue;const win=ex>en,xe=xOf(e),xx=xOf(xd);
    if(S.st){ctx.setLineDash([4,3]);ctx.lineWidth=1;ctx.strokeStyle=css.loss;ctx.beginPath();ctx.moveTo(xe,yOf(st));ctx.lineTo(xx,yOf(st));ctx.stroke();
     if(tg!=null){ctx.strokeStyle=css.win;ctx.beginPath();ctx.moveTo(xe,yOf(tg));ctx.lineTo(xx,yOf(tg));ctx.stroke()}ctx.setLineDash([])}
@@ -144,7 +154,7 @@ function draw(){rc();range();const a=Math.max(0,Math.floor(view.start)),b=Math.m
  ctx.strokeStyle=css.axis;ctx.beginPath();ctx.moveTo(PW()+.5,TOP);ctx.lineTo(PW()+.5,H-BOT);ctx.stroke()}
 function showTip(i,px,py){const f=v=>v.toFixed(2);let h=`<b>${D.t[i]}</b>${D.dev[i]?'':' <span style="color:var(--muted)">(mês R)</span>'}<br>A ${f(D.o[i])} · M ${f(D.h[i])} · m ${f(D.l[i])} · F ${f(D.c[i])}`;
  if(D.ma[i]!=null)h+=`<br>MM50 ${f(D.ma[i])} ${D.up[i]?'subindo':'caindo'}`;
- for(const s of (D.sig[i]||[]))h+=`<br><span class="k" style="background:var(--k${s[0]})"></span>Sinal ${KN[D.kinds[s[0]]]}: gatilho ${f(s[1])}${s[2]!=null?' · stop '+f(s[2]):''}`;
+ for(const s of (D.sig[i]||[]))h+=s[3]===1||s[3]===2?`<br><span class="k" style="background:var(--k${s[0]})"></span>123: candle ${s[3]} de 3`:`<br><span class="k" style="background:var(--k${s[0]})"></span>Sinal ${KN[D.kinds[s[0]]]}: gatilho ${f(s[1])}${s[2]!=null?' · stop '+f(s[2]):''}`;
  for(const t of trades()){if(t[2]===i||t[3]===i){const R=(t[8]-t[5])/(t[5]-t[6]);h+=`<br>${t[2]===i?'▲ Entrada':'● Saída'} ${KN[D.kinds[t[4]]]}: ${f(t[2]===i?t[5]:t[8])}`+(t[3]===i?` (${t[9]}, ${(R>0?'+':'')+R.toFixed(2)}R)`:` · stop ${f(t[6])}${t[7]!=null?' · alvo '+f(t[7]):''}`)}}
  tip.innerHTML=h;tip.style.display='block';const r=box.getBoundingClientRect();let x=px+14,y=py+14;if(x+tip.offsetWidth>r.width)x=px-tip.offsetWidth-14;if(y+tip.offsetHeight>r.height)y=py-tip.offsetHeight-14;tip.style.left=Math.max(0,x)+'px';tip.style.top=Math.max(0,y)+'px'}
 let drag=null;
